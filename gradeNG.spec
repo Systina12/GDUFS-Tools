@@ -31,7 +31,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    icon='E:\dailyTool\pythonProject\cache\gdufs.ico',
+    icon='./gdufs.ico',
     codesign_identity=None,
     entitlements_file=None,
 )
