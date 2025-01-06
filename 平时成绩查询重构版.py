@@ -193,6 +193,8 @@ def display_login_gui(on_login):
 
 
 def getGpa(url, session):
+    name="查询失败"
+    mainGPA=secGPA=name
     response = session.post(
         url + '/kscj/cjcx_list',
         headers=get_headers(url + '/kscj/cjcx_query'),
@@ -200,8 +202,11 @@ def getGpa(url, session):
     )
     text=response.text
     name = text.split("&nbsp;&nbsp;&nbsp;")[1].split("</div>")[0]
-    mainGPA = text.split("主修课程平均学分绩点<span>")[1].split("</span>")[0]
-    secGPA = text.split("辅修课程平均学分绩点<span>")[1].split("</span>")[0]
+    try:
+        mainGPA = text.split("主修课程平均学分绩点<span>")[1].split("</span>")[0]
+        secGPA = text.split("辅修课程平均学分绩点<span>")[1].split("</span>")[0]
+    except IndexError:
+        pass
     return f"{name} ,主修课程平均学分绩点 {mainGPA} ,辅修课程平均学分绩点 {secGPA}"
 
 
