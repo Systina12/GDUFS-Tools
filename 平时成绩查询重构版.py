@@ -1,4 +1,5 @@
 import json
+import time
 import tkinter as tk
 import urllib.parse
 from tkinter import ttk, messagebox
@@ -7,6 +8,12 @@ import ddddocr
 import requests
 import wcwidth
 from PIL import Image
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 
 def create_session():
@@ -44,23 +51,29 @@ def perform_login(session, url, username, password):
     password = urllib.parse.quote(password)
     session.get(url + '/xk/LoginToXkLdap')
     response = session.get(url + '/verifycode.servlet')
+    time.sleep(1)
     i = 0
     if response.status_code == 200:
         while i < 30:
-            i += 1
-            with open("./captcha.png", "wb") as f:
-                f.write(response.content)
-            img = Image.open("./captcha.png")
-            captcha = ddddocr.DdddOcr(show_ad=False).classification(img)
-            login_body = f"USERNAME={username}&PASSWORD={password}&RANDOMCODE={captcha}"
-            login_response = session.post(
-                url + '/xk/LoginToXkLdap',
-                headers=get_headers(url + '/xk/LoginToXkLdap'),
-                data=login_body
-            )
-            if "<font color=\"red\">" in login_response.text:
-                error_message = login_response.text.split("<font color=\"red\">")[1].split("</font>")[0]
-                #return None, error_message
+            try:
+                response = session.get(url + '/verifycode.servlet')
+                time.sleep(1)
+                i += 1
+                with open("./captcha.png", "wb") as f:
+                    f.write(response.content)
+                img = Image.open("./captcha.png")
+                captcha = ddddocr.DdddOcr(show_ad=False).classification(img)
+                login_body = f"USERNAME={username}&PASSWORD={password}&RANDOMCODE={captcha}"
+                login_response = session.post(
+                    url + '/xk/LoginToXkLdap',
+                    headers=get_headers(url + '/xk/LoginToXkLdap'),
+                    data=login_body
+                )
+                if "<font color=\"red\">" in login_response.text:
+                    error_message = login_response.text.split("<font color=\"red\">")[1].split("</font>")[0]
+                    #return None, error_message
+            except Exception:
+                pass
             else:
                 break
 
@@ -73,11 +86,80 @@ def perform_login(session, url, username, password):
     return None, "Failed to retrieve captcha"
 
 
-def query_scores(session, url):
+def perform_out_login(session, url, username, password):
+    chrome_options = webdriver.EdgeOptions()
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--disable-extensions")
+    service = Service("./edgedriver_win64/msedgedriver.exe")  # 替换为你的chromedriver路径
+    browser = webdriver.Edge(service=service)
+    login_url = "https://authserver-443.webvpn.gdufs.edu.cn/authserver/login"
+
+    browser.get(login_url)
+    username_field = WebDriverWait(browser, timeout=9999999).until(
+        EC.presence_of_element_located((By.XPATH, """//*[@id="username"]""")))  # 替换为实际的用户名输入框ID
+    password_field = WebDriverWait(browser, timeout=9999999).until(
+        EC.presence_of_element_located((By.XPATH, """//*[@id="password"]""")))  # 替换为实际的密码输入框ID
+    username_field.send_keys("20231003082")
+    password_field.send_keys("123456aA@")
+    login_button = WebDriverWait(browser, timeout=9999999).until(
+        EC.element_to_be_clickable((By.XPATH, """//*[@id="login_submit"]""")))  # 替换为实际的登录按钮ID
+    login_button.click()
+
+    WebDriverWait(browser, timeout=9999999).until(EC.presence_of_element_located((By.XPATH,"""//*[@id="app"]/div/div[2]/div/div/div/div/div/div/div[1]/div[3]/div[1]/div/div/div[1]/div[2]/div""")))
+    browser.get("""https://jxgl-443.webvpn.gdufs.edu.cn/jsxsd/""")
+    cookies = browser.get_cookies()
+    print(cookies)
+    browser.close()
+    cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+    session.cookies.update(cookies_dict)
+    for key, value in cookies_dict.items():
+        session.cookies.set(key, value)
+    response=requests.get("""https://jxgl-443.webvpn.gdufs.edu.cn/jsxsd/""", cookies=cookies_dict)
+    print(response.text)
+    password = urllib.parse.quote(password)
+    session.get(url + '/xk/LoginToXkLdap', cookies=cookies_dict)
+    response = session.get(url + '/verifycode.servlet', cookies=cookies_dict)
+    time.sleep(1)
+    i = 0
+    if response.status_code == 200:
+        while i < 30:
+            try:
+                response = session.get(url + '/verifycode.servlet', cookies=cookies_dict)
+                time.sleep(1)
+                i += 1
+                with open("./captcha.png", "wb") as f:
+                    f.write(response.content)
+                img = Image.open("./captcha.png")
+                captcha = ddddocr.DdddOcr(show_ad=False).classification(img)
+                login_body = f"USERNAME={username}&PASSWORD={password}&RANDOMCODE={captcha}"
+                login_response = session.post(
+                    url + '/xk/LoginToXkLdap',
+                    headers=get_headers(url + '/xk/LoginToXkLdap'),
+                    data=login_body
+                )
+                if "<font color=\"red\">" in login_response.text:
+                    error_message = login_response.text.split("<font color=\"red\">")[1].split("</font>")[0]
+                    #return None, error_message
+            except Exception:
+                pass
+            else:
+                break
+
+        title = login_response.text.split('<title>')[1].split('</title>')[0]
+        if i==29:
+            return None, error_message
+        else:
+            return login_response.cookies, title
+
+    return None, "Failed to retrieve captcha"
+
+
+def query_scores(session, url,cookie):
     response = session.post(
         url + '/kscj/cjcx_list',
         headers=get_headers(url + '/kscj/cjcx_query'),
         data="kksj=&kcxz=&kcmc=&fxkc=0&xsfs=all"
+        , cookies=cookie
     )
 
     text = response.text
@@ -94,10 +176,10 @@ def query_scores(session, url):
     return names, urls
 
 
-def fetch_scores_details(session, url, urls):
+def fetch_scores_details(session, url, urls,cookie):
     contents = []
     for elem in urls:
-        response = session.get(url + elem, headers=get_headers(url))
+        response = session.get(url + elem, headers=get_headers(url), cookies=cookie)
         lines = response.text.split('\n')
         for line in lines:
             if "<td>" in line:
@@ -106,7 +188,7 @@ def fetch_scores_details(session, url, urls):
     return contents
 
 
-def display_scores_gui(names, contents, on_logout, on_refresh, gpa_message):
+def display_scores_gui(names, contents, on_refresh, gpa_message):
     root = tk.Tk()
     root.title("成绩查询结果")
     root.iconbitmap('./GDUFS.ico')
@@ -144,7 +226,7 @@ def display_scores_gui(names, contents, on_logout, on_refresh, gpa_message):
     root.mainloop()
 
 
-def display_login_gui(on_login):
+def display_login_gui(on_login,on_out_login):
     login_root = tk.Tk()
     login_root.title("登录")
     login_root.iconbitmap('./GDUFS.ico')
@@ -186,19 +268,33 @@ def display_login_gui(on_login):
         else:
             messagebox.showerror("错误", "请输入用户名和密码！")
 
-    login_button = ttk.Button(frame, text="登录", command=handle_login)
+    def handle_out_login():
+        username = username_entry.get()
+        password = password_entry.get()
+
+        if username and password:
+            on_out_login(username, password, False)
+            login_root.destroy()
+        else:
+            messagebox.showerror("错误", "请输入用户名和密码！")
+
+    login_button = ttk.Button(frame, text="校园网登录", command=handle_login)
     login_button.grid(column=1, row=3, padx=5, pady=5, sticky=tk.E)
+
+    login_button = ttk.Button(frame, text="外网登录", command=handle_out_login)
+    login_button.grid(column=2, row=3, padx=5, pady=5, sticky=tk.E)
 
     login_root.mainloop()
 
 
-def getGpa(url, session):
+def getGpa(url, session,cookie):
     name="查询失败"
     mainGPA=secGPA=name
     response = session.post(
         url + '/kscj/cjcx_list',
         headers=get_headers(url + '/kscj/cjcx_query'),
         data="kksj=&kcxz=&kcmc=&fxkc=0&xsfs=all"
+        , cookies=cookie
     )
     text=response.text
     name = text.split("&nbsp;&nbsp;&nbsp;")[1].split("</div>")[0]
@@ -209,18 +305,20 @@ def getGpa(url, session):
         pass
     return f"{name} ,主修课程平均学分绩点 {mainGPA} ,辅修课程平均学分绩点 {secGPA}"
 
-
+url = "https://jxgl.gdufs.edu.cn/jsxsd"
 def main():
-    url = "https://jxgl.gdufs.edu.cn/jsxsd"
+
     session = create_session()
 
     def on_login(username, password, auto_login):
         try:
+            global url
+            url = "https://jxgl.gdufs.edu.cn/jsxsd"
             cookies, title = perform_login(session, url, username, password)
 
             if not cookies:
                 messagebox.showerror("登录失败", title)
-                display_login_gui(on_login)
+                display_login_gui(on_login,on_out_login)
                 return
 
             if auto_login:
@@ -230,26 +328,49 @@ def main():
                 with open("./config.json", "w", encoding="utf-8") as f:
                     json.dump({"username": username, "password": password, "autoLogin": 0}, f)
 
-            query_and_display()
+            query_and_display(cookies)
 
         except Exception as e:
             messagebox.showerror("错误", str(e))
-            display_login_gui(on_login)
+            display_login_gui(on_login,on_out_login)
 
-    def query_and_display():
+    def on_out_login(username, password, auto_login):
+        global url
+        url = "https://jxgl-443.webvpn.gdufs.edu.cn/jsxsd"
         try:
-            names, urls = query_scores(session, url)
-            contents = fetch_scores_details(session, url, urls)
+            cookies, title = perform_out_login(session, url, username, password)
+            if not cookies:
+                messagebox.showerror("登录失败", title)
+                display_login_gui(on_login,on_out_login)
+                return
 
-            gpa_message = getGpa(url, session)
+            if auto_login:
+                with open("./config.json", "w", encoding="utf-8") as f:
+                    json.dump({"username": username, "password": password, "autoLogin": 1}, f)
+            else:
+                with open("./config.json", "w", encoding="utf-8") as f:
+                    json.dump({"username": username, "password": password, "autoLogin": 0}, f)
+
+            query_and_display(cookies)
+
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+            display_login_gui(on_login,on_out_login)
+
+    def query_and_display(cookie):
+        try:
+            names, urls = query_scores(session, url,cookie)
+            contents = fetch_scores_details(session, url, urls,cookie)
+
+            gpa_message = getGpa(url, session,cookie)
 
             def on_logout():
                 main()
 
             def on_refresh():
-                query_and_display()
+                query_and_display(cookie)
 
-            display_scores_gui(names, contents, on_logout, on_refresh, gpa_message)
+            display_scores_gui(names, contents,on_refresh, gpa_message)
 
         except Exception as e:
             messagebox.showerror("错误", str(e))
@@ -261,10 +382,10 @@ def main():
             if config.get("autoLogin"):
                 on_login(config['username'], config['password'], True)
             else:
-                display_login_gui(on_login)
+                display_login_gui(on_login,on_out_login)
 
     except FileNotFoundError:
-        display_login_gui(on_login)
+        display_login_gui(on_login,on_out_login)
     except json.JSONDecodeError:
         messagebox.showerror("错误", "配置文件格式错误！")
     except KeyError:
