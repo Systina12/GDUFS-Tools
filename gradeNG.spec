@@ -22,7 +22,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='平时成绩查询',
+    name='平时成绩',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
